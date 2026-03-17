@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marimbas Home — Knowledge Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d1117; color:#c9d8f0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; overflow:hidden; width:100vw; height:100vh; }
+#graph { width:100vw; height:100vh; display:block; }
+.link { stroke-opacity:0.3; transition:stroke-opacity 0.2s; }
+.node circle { cursor:pointer; }
+.node text { pointer-events:none; user-select:none; }
+
+/* ── TOP BAR ── */
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:52px;
+  background:rgba(13,17,23,0.92); border-bottom:1px solid rgba(92,133,255,0.15);
+  backdrop-filter:blur(12px); display:flex; align-items:center; gap:12px;
+  padding:0 18px; z-index:200;
+}
+#topbar h1 { font-size:14px; font-weight:700; color:#FFD700; white-space:nowrap; letter-spacing:0.03em; margin-right:4px; }
+#topbar .sep { width:1px; height:24px; background:rgba(92,133,255,0.2); }
+#search { background:rgba(255,255,255,0.06); border:1px solid rgba(92,133,255,0.2); border-radius:20px; padding:6px 14px 6px 32px; color:#c9d8f0; font-size:13px; outline:none; width:200px; }
+#search::placeholder { color:#4a5e80; }
+#search:focus { border-color:rgba(120,160,255,0.5); background:rgba(255,255,255,0.09); }
+.search-icon { position:absolute; left:195px; top:50%; transform:translateY(-50%); color:#4a5e80; font-size:14px; pointer-events:none; }
+#stats-bar { display:flex; gap:16px; font-size:12px; color:#6b7fa3; }
+#stats-bar strong { color:#78a0ff; }
+.btn { background:rgba(92,133,255,0.12); border:1px solid rgba(92,133,255,0.22); border-radius:6px; color:#78a0ff; padding:5px 12px; font-size:12px; cursor:pointer; white-space:nowrap; transition:all 0.15s; }
+.btn:hover { background:rgba(92,133,255,0.22); color:#a8c0ff; }
+.btn.active { background:rgba(92,133,255,0.28); color:#c0d4ff; border-color:rgba(92,133,255,0.5); }
+#topbar .spacer { flex:1; }
+
+/* ── CATEGORY FILTERS ── */
+#filters {
+  position:fixed; top:52px; left:0; right:0;
+  background:rgba(10,14,22,0.88); border-bottom:1px solid rgba(92,133,255,0.1);
+  backdrop-filter:blur(8px); display:flex; align-items:center; gap:6px;
+  padding:7px 18px; z-index:190; flex-wrap:wrap;
+}
+.filter-chip {
+  display:flex; align-items:center; gap:5px;
+  padding:3px 10px 3px 8px; border-radius:20px; font-size:11px; cursor:pointer;
+  border:1px solid transparent; transition:all 0.15s; user-select:none; font-weight:500;
+}
+.filter-chip.off { opacity:0.28; filter:saturate(0); }
+.filter-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+#filters-label { font-size:11px; color:#4a5e80; text-transform:uppercase; letter-spacing:0.07em; margin-right:4px; }
+
+/* ── SIDEBAR (node detail) ── */
+#sidebar {
+  position:fixed; right:0; top:52px; bottom:0; width:280px;
+  background:rgba(10,14,22,0.95); border-left:1px solid rgba(92,133,255,0.12);
+  backdrop-filter:blur(12px); z-index:150; transform:translateX(100%);
+  transition:transform 0.25s ease; overflow-y:auto; padding:18px;
+}
+#sidebar.open { transform:translateX(0); }
+#sidebar h2 { font-size:16px; font-weight:700; margin-bottom:4px; line-height:1.3; }
+#sidebar .sb-group { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.5; margin-bottom:14px; }
+#sidebar .sb-section { margin-bottom:16px; }
+#sidebar .sb-label { font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#5c85ff; margin-bottom:6px; font-weight:600; }
+#sidebar .sb-stat { display:flex; justify-content:space-between; font-size:13px; padding:4px 0; border-bottom:1px solid rgba(92,133,255,0.06); }
+#sidebar .sb-stat span:last-child { color:#a8c0ff; font-weight:600; }
+#sb-neighbors { display:flex; flex-wrap:wrap; gap:5px; }
+.neighbor-tag { background:rgba(92,133,255,0.1); border:1px solid rgba(92,133,255,0.2); border-radius:4px; padding:2px 8px; font-size:11px; color:#78a0ff; cursor:pointer; transition:all 0.12s; }
+.neighbor-tag:hover { background:rgba(92,133,255,0.2); }
+#sidebar-close { position:absolute; top:12px; right:12px; background:none; border:none; color:#4a5e80; font-size:18px; cursor:pointer; line-height:1; }
+#sidebar-close:hover { color:#c9d8f0; }
+
+/* ── STATS PANEL ── */
+#stats-panel {
+  position:fixed; left:18px; bottom:18px; width:240px;
+  background:rgba(10,14,22,0.92); border:1px solid rgba(92,133,255,0.12);
+  border-radius:10px; backdrop-filter:blur(8px); padding:14px; z-index:150;
+}
+#stats-panel h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:#5c85ff; margin-bottom:10px; }
+.top-node { display:flex; align-items:center; justify-content:space-between; padding:4px 0; font-size:12px; cursor:pointer; }
+.top-node:hover .tn-name { color:#a8c0ff; }
+.tn-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-right:6px; }
+.tn-name { color:#c9d8f0; flex:1; }
+.tn-count { color:#5c85ff; font-size:11px; background:rgba(92,133,255,0.1); padding:1px 6px; border-radius:10px; }
+#sp-toggle { position:absolute; top:8px; right:10px; background:none; border:none; color:#4a5e80; cursor:pointer; font-size:12px; }
+
+/* ── MINI MAP ── */
+#minimap-wrap {
+  position:fixed; right:18px; bottom:18px;
+  background:rgba(10,14,22,0.9); border:1px solid rgba(92,133,255,0.12);
+  border-radius:8px; overflow:hidden; z-index:150;
+}
+
+/* ── CONTROLS HINT ── */
+#controls { position:fixed; right:18px; bottom:90px; font-size:10px; color:#3a4e6e; text-align:right; line-height:1.9; }
+
+/* ── TOOLTIP ── */
+#tooltip {
+  position:fixed; background:rgba(10,14,22,0.96); border:1px solid rgba(92,133,255,0.25);
+  border-radius:8px; padding:9px 13px; font-size:12px; pointer-events:none;
+  opacity:0; transition:opacity 0.12s; max-width:200px; backdrop-filter:blur(8px); z-index:300;
+}
+#tooltip .tt-name { font-weight:700; font-size:13px; margin-bottom:2px; }
+#tooltip .tt-group { font-size:10px; opacity:0.5; text-transform:uppercase; letter-spacing:0.07em; }
+#tooltip .tt-cnt { font-size:11px; color:#78a0ff; margin-top:3px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🏠 Marimbas Vault</h1>
+  <div class="sep"></div>
+  <div style="position:relative">
+    <span class="search-icon">🔍</span>
+    <input id="search" type="text" placeholder="Buscar nodo...">
+  </div>
+  <div class="sep"></div>
+  <div id="stats-bar">
+    <span><strong id="sn">0</strong> nodos</span>
+    <span><strong id="sl">0</strong> enlaces</span>
+    <span><strong id="sv">0</strong> visibles</span>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn active" id="btn-labels">Labels</button>
+  <button class="btn active" id="btn-arrows">Flechas</button>
+  <button class="btn" id="btn-physics">Pausar</button>
+  <button class="btn" id="btn-reset">Reset vista</button>
+</div>
+
+<div id="filters">
+  <span id="filters-label">Filtros:</span>
+</div>
+
+<svg id="graph" style="margin-top:88px;height:calc(100vh - 88px)"></svg>
+
+<div id="sidebar">
+  <button id="sidebar-close">✕</button>
+  <h2 id="sb-title">—</h2>
+  <div class="sb-group" id="sb-group">—</div>
+  <div class="sb-section">
+    <div class="sb-label">Estadísticas</div>
+    <div class="sb-stat"><span>Conexiones totales</span><span id="sb-degree">—</span></div>
+    <div class="sb-stat"><span>Entradas (in)</span><span id="sb-in">—</span></div>
+    <div class="sb-stat"><span>Salidas (out)</span><span id="sb-out">—</span></div>
+  </div>
+  <div class="sb-section">
+    <div class="sb-label">Nodos conectados (<span id="sb-ncount">0</span>)</div>
+    <div id="sb-neighbors"></div>
+  </div>
+</div>
+
+<div id="stats-panel">
+  <button id="sp-toggle">▾</button>
+  <h3>Top nodos por conexiones</h3>
+  <div id="top-nodes-list"></div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-name" id="tt-n"></div>
+  <div class="tt-group" id="tt-g"></div>
+  <div class="tt-cnt" id="tt-c"></div>
+</div>
+
+<div id="controls">scroll → zoom · drag → mover<br>clic → detalles · doble clic → liberar</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  DATA
+// ─────────────────────────────────────────────
+const COLORS = {
+  moc:'#FFD700', sistema:'#4ECDC4', tecnico:'#45B7D1', integracion:'#96CEB4',
+  propiedad:'#FFEAA7', fase:'#DDA0DD', persona:'#F08080', financiero:'#98FB98',
+  legal:'#FF6B6B', datos:'#87CEEB', archivo:'#87CEEB', operaciones:'#FFA07A', especial:'#C9B1FF'
+};
+const GROUP_LABEL = {
+  moc:'MOC / Hub', sistema:'Sistema', tecnico:'Técnico', integracion:'Integración',
+  propiedad:'Propiedad', fase:'Fase', persona:'Persona', financiero:'Financiero',
+  legal:'Legal', datos:'Datos', archivo:'Archivo', operaciones:'Operaciones', especial:'Especial'
+};
+
+const RAW_NODES = [
+  {id:"Home",label:"🏠 Home",group:"moc"},
+  {id:"MOC_Eco",label:"MOC Ecosistema",group:"moc"},{id:"MOC_Tec",label:"MOC Técnico",group:"moc"},
+  {id:"MOC_Pro",label:"MOC Propiedades",group:"moc"},{id:"MOC_Int",label:"MOC Integraciones",group:"moc"},
+  {id:"MOC_Fin",label:"MOC Financiero",group:"moc"},{id:"MOC_Leg",label:"MOC Legal",group:"moc"},
+  {id:"MOC_Ope",label:"MOC Operaciones",group:"moc"},{id:"MOC_Fas",label:"MOC Fases",group:"moc"},
+  {id:"Supabase",label:"Supabase",group:"sistema"},{id:"GuestApp",label:"Guest App",group:"sistema"},
+  {id:"AdminDB",label:"Admin Dashboard",group:"sistema"},{id:"BackboneDB",label:"Backbone Dashboard",group:"sistema"},
+  {id:"CleanBot",label:"CleanBot",group:"sistema"},{id:"Minibar",label:"Minibar",group:"sistema"},
+  {id:"Rumae",label:"Rumae",group:"sistema"},
+  {id:"OwnerRez",label:"OwnerRez",group:"integracion"},{id:"Vercel",label:"Vercel",group:"integracion"},
+  {id:"GitHub",label:"GitHub",group:"integracion"},{id:"PriceLabs",label:"PriceLabs",group:"integracion"},
+  {id:"Airbnb",label:"Airbnb",group:"integracion"},{id:"Booking",label:"Booking.com",group:"integracion"},
+  {id:"ClickUp",label:"ClickUp",group:"integracion"},{id:"Slack",label:"Slack",group:"integracion"},
+  {id:"Inngest",label:"Inngest",group:"integracion"},{id:"Redis",label:"Upstash Redis",group:"integracion"},
+  {id:"Sentry",label:"Sentry",group:"integracion"},{id:"BetterStack",label:"BetterStack",group:"integracion"},
+  {id:"Resend",label:"Resend",group:"integracion"},{id:"HomeEx",label:"HomeExchange",group:"integracion"},
+  {id:"Guesty",label:"Guesty Legacy",group:"integracion"},
+  {id:"DBSchema",label:"Database Schema",group:"tecnico"},{id:"EdgeFn",label:"Edge Functions",group:"tecnico"},
+  {id:"EstrDatos",label:"Estrategia Datos",group:"tecnico"},{id:"Trampas",label:"Trampas Técnicas",group:"tecnico"},
+  {id:"GuestFlow",label:"Guest App Flow",group:"tecnico"},{id:"WebhookFlow",label:"Webhook Flow",group:"tecnico"},
+  {id:"Proxy",label:"Proxy Pattern",group:"tecnico"},{id:"RLS",label:"RLS Architecture",group:"tecnico"},
+  {id:"SecAudit",label:"Security Audit",group:"tecnico"},{id:"ArrManuals",label:"Arrival Manuals",group:"tecnico"},
+  {id:"CodeInt",label:"Codebase Integration",group:"tecnico"},
+  {id:"StackDef",label:"Stack Definitivo 2026",group:"operaciones"},{id:"RevDef",label:"Review Defense",group:"operaciones"},
+  {id:"Bugs",label:"Bugs y Fixes",group:"operaciones"},{id:"FinMod",label:"Finance Module",group:"operaciones"},
+  {id:"MigPMS",label:"Migración PMS",group:"operaciones"},{id:"ManLleg",label:"Manuales de Llegada",group:"operaciones"},
+  {id:"DefRev",label:"Defensa Reviews SOP",group:"operaciones"},
+  {id:"FGP",label:"Full Guest Portal",group:"fase"},{id:"WAuto",label:"WhatsApp Automation",group:"fase"},
+  {id:"MsgSys",label:"Messaging System",group:"fase"},{id:"Guidebook",label:"Guidebook",group:"fase"},
+  {id:"AdminEnh",label:"Admin Enhancements",group:"fase"},{id:"MinibarInt",label:"Minibar Integration",group:"fase"},
+  {id:"Enrique",label:"Enrique Miceli",group:"persona"},{id:"Gladys",label:"Gladys Miceli",group:"persona"},
+  {id:"Zayde",label:"Zayde Vera",group:"persona"},
+  {id:"PLGen",label:"P&L General",group:"financiero"},{id:"HAirbnb",label:"Historial 10 Años",group:"financiero"},
+  {id:"Cash25",label:"Cashflow 2025",group:"financiero"},
+  {id:"Superhog",label:"Caso Superhog",group:"legal"},{id:"Sahily",label:"Caso Sahily",group:"legal"},
+  {id:"LLC",label:"Marimbaspark LLC",group:"legal"},{id:"Facturas",label:"Facturas",group:"legal"},
+  {id:"IndDatos",label:"Índice de Datos",group:"datos"},{id:"Media",label:"Media y Branding",group:"datos"},
+  {id:"SesCowork",label:"Sesiones Cowork",group:"archivo"},{id:"Repos",label:"Repositorios Código",group:"archivo"},
+  {id:"Creds",label:"🔐 Credenciales",group:"especial"},
+  {id:"C1",label:"Condesa 1",group:"propiedad"},{id:"C2",label:"Condesa 2",group:"propiedad"},
+  {id:"C3",label:"Condesa 3",group:"propiedad"},{id:"C4",label:"Condesa 4",group:"propiedad"},
+  {id:"C5",label:"Condesa 5",group:"propiedad"},{id:"C6",label:"Condesa 6",group:"propiedad"},
+  {id:"C7",label:"Condesa 7",group:"propiedad"},{id:"C8",label:"Condesa 8 Nuevo",group:"propiedad"},
+  {id:"R1",label:"Roma 1",group:"propiedad"},{id:"R2",label:"Roma 2",group:"propiedad"},
+  {id:"R3",label:"Roma 3",group:"propiedad"},
+  {id:"Coy1",label:"Coyoacán 1",group:"propiedad"},{id:"Coy2",label:"Coyoacán 2",group:"propiedad"},
+  {id:"SC1",label:"San Cristóbal 1",group:"propiedad"},{id:"SC2",label:"San Cristóbal 2",group:"propiedad"},
+  {id:"SC3",label:"San Cristóbal 3",group:"propiedad"},{id:"SC4",label:"San Cristóbal 4",group:"propiedad"},
+  {id:"Tuxtla",label:"Tuxtla Mezzanine",group:"propiedad"},
+];
+
+const RAW_LINKS = [
+  ["Home","MOC_Eco"],["Home","MOC_Pro"],["Home","MOC_Tec"],["Home","MOC_Ope"],
+  ["Home","MOC_Int"],["Home","MOC_Fin"],["Home","MOC_Leg"],["Home","MOC_Fas"],
+  ["Home","GuestApp"],["Home","AdminDB"],["Home","BackboneDB"],
+  ["Home","PLGen"],["Home","Cash25"],["Home","HAirbnb"],["Home","LLC"],["Home","Superhog"],
+  ["Home","IndDatos"],["Home","SesCowork"],["Home","Repos"],
+  ["Home","Enrique"],["Home","Gladys"],["Home","Zayde"],
+  ["MOC_Eco","Supabase"],["MOC_Eco","GuestApp"],["MOC_Eco","Vercel"],
+  ["MOC_Eco","OwnerRez"],["MOC_Eco","AdminDB"],["MOC_Eco","GitHub"],
+  ["MOC_Eco","PriceLabs"],["MOC_Eco","BackboneDB"],
+  ["MOC_Eco","CleanBot"],["MOC_Eco","Rumae"],["MOC_Eco","Minibar"],["MOC_Eco","Creds"],
+  ["MOC_Eco","Airbnb"],["MOC_Eco","Booking"],["MOC_Eco","HomeEx"],
+  ["MOC_Eco","ClickUp"],["MOC_Eco","Slack"],
+  ["MOC_Eco","MOC_Fin"],["MOC_Eco","MOC_Leg"],["MOC_Eco","LLC"],
+  ["MOC_Eco","IndDatos"],["MOC_Eco","Media"],["MOC_Eco","SesCowork"],["MOC_Eco","Repos"],
+  ["MOC_Eco","MOC_Tec"],["MOC_Eco","MOC_Pro"],["MOC_Eco","MOC_Int"],
+  ["MOC_Tec","DBSchema"],["MOC_Tec","EdgeFn"],["MOC_Tec","EstrDatos"],["MOC_Tec","Proxy"],
+  ["MOC_Tec","RLS"],["MOC_Tec","WebhookFlow"],["MOC_Tec","SecAudit"],["MOC_Tec","GuestFlow"],
+  ["MOC_Tec","Trampas"],["MOC_Tec","MOC_Eco"],["MOC_Tec","Supabase"],["MOC_Tec","Vercel"],["MOC_Tec","GitHub"],
+  ["MOC_Pro","C1"],["MOC_Pro","C2"],["MOC_Pro","C3"],["MOC_Pro","C4"],
+  ["MOC_Pro","C5"],["MOC_Pro","C6"],["MOC_Pro","C7"],["MOC_Pro","C8"],
+  ["MOC_Pro","R1"],["MOC_Pro","R2"],["MOC_Pro","R3"],
+  ["MOC_Pro","Coy1"],["MOC_Pro","Coy2"],
+  ["MOC_Pro","SC1"],["MOC_Pro","SC2"],["MOC_Pro","SC3"],["MOC_Pro","SC4"],["MOC_Pro","Tuxtla"],
+  ["MOC_Pro","HomeEx"],["MOC_Pro","Sahily"],
+  ["MOC_Pro","Enrique"],["MOC_Pro","Gladys"],["MOC_Pro","Zayde"],
+  ["MOC_Pro","PriceLabs"],["MOC_Pro","ArrManuals"],["MOC_Pro","GuestFlow"],
+  ["MOC_Pro","ManLleg"],["MOC_Pro","Media"],
+  ["MOC_Pro","MOC_Eco"],["MOC_Pro","GuestApp"],["MOC_Pro","OwnerRez"],["MOC_Pro","MOC_Leg"],
+  ["MOC_Int","Supabase"],["MOC_Int","Vercel"],["MOC_Int","GitHub"],["MOC_Int","OwnerRez"],
+  ["MOC_Int","PriceLabs"],["MOC_Int","ClickUp"],["MOC_Int","Slack"],
+  ["MOC_Int","Inngest"],["MOC_Int","Redis"],["MOC_Int","Sentry"],["MOC_Int","BetterStack"],["MOC_Int","Resend"],
+  ["MOC_Int","BackboneDB"],["MOC_Int","CleanBot"],
+  ["MOC_Int","Guesty"],["MOC_Int","MigPMS"],
+  ["MOC_Int","MOC_Eco"],["MOC_Int","StackDef"],["MOC_Int","MOC_Tec"],["MOC_Int","MOC_Fin"],
+  ["MOC_Ope","BackboneDB"],["MOC_Ope","ArrManuals"],["MOC_Ope","PriceLabs"],["MOC_Ope","SecAudit"],
+  ["MOC_Ope","FinMod"],["MOC_Ope","GuestFlow"],["MOC_Ope","HomeEx"],["MOC_Ope","CodeInt"],
+  ["MOC_Ope","CleanBot"],["MOC_Ope","Rumae"],["MOC_Ope","RevDef"],
+  ["MOC_Ope","FGP"],["MOC_Ope","AdminEnh"],["MOC_Ope","MinibarInt"],["MOC_Ope","WAuto"],
+  ["MOC_Ope","MsgSys"],["MOC_Ope","Guidebook"],["MOC_Ope","MigPMS"],
+  ["MOC_Ope","ManLleg"],["MOC_Ope","DefRev"],["MOC_Ope","StackDef"],
+  ["MOC_Ope","SesCowork"],["MOC_Ope","Repos"],
+  ["MOC_Ope","MOC_Fas"],["MOC_Ope","ClickUp"],["MOC_Ope","MOC_Fin"],["MOC_Ope","MOC_Leg"],
+  ["MOC_Fas","GuestFlow"],["MOC_Fas","WebhookFlow"],["MOC_Fas","AdminDB"],["MOC_Fas","Slack"],
+  ["MOC_Fas","RLS"],["MOC_Fas","EstrDatos"],
+  ["MOC_Fas","FGP"],["MOC_Fas","AdminEnh"],["MOC_Fas","MinibarInt"],["MOC_Fas","WAuto"],
+  ["MOC_Fas","MsgSys"],["MOC_Fas","Guidebook"],
+  ["MOC_Fas","GuestApp"],["MOC_Fas","ArrManuals"],["MOC_Fas","Minibar"],
+  ["MOC_Fas","OwnerRez"],["MOC_Fas","Resend"],["MOC_Fas","RevDef"],["MOC_Fas","CleanBot"],
+  ["MOC_Fas","MOC_Ope"],["MOC_Fas","StackDef"],["MOC_Fas","MOC_Eco"],
+  ["MOC_Fin","PLGen"],["MOC_Fin","Cash25"],["MOC_Fin","HAirbnb"],
+  ["MOC_Fin","IndDatos"],["MOC_Fin","EstrDatos"],["MOC_Fin","LLC"],["MOC_Fin","Facturas"],
+  ["MOC_Fin","Supabase"],["MOC_Fin","OwnerRez"],["MOC_Fin","PriceLabs"],
+  ["MOC_Fin","MOC_Eco"],["MOC_Fin","MOC_Leg"],
+  ["MOC_Leg","Sahily"],["MOC_Leg","Superhog"],["MOC_Leg","LLC"],["MOC_Leg","Facturas"],
+  ["C2","HomeEx"],["C3","HomeEx"],["C5","HomeEx"],["C7","HomeEx"],
+  ["SC1","HomeEx"],["Tuxtla","HomeEx"],["SC3","Sahily"],
+  ["Supabase","EdgeFn"],["Supabase","DBSchema"],
+  ["GuestApp","GuestFlow"],["GuestApp","RLS"],
+  ["OwnerRez","WebhookFlow"],["OwnerRez","MigPMS"],
+  ["Guesty","EstrDatos"],["Guesty","MigPMS"],
+  ["FGP","GuestApp"],["FGP","ArrManuals"],["FGP","Minibar"],
+  ["WAuto","OwnerRez"],["WAuto","WebhookFlow"],
+  ["MinibarInt","Minibar"],["MinibarInt","GuestApp"],
+  ["AdminEnh","AdminDB"],["MsgSys","GuestApp"],["MsgSys","AdminDB"],
+  ["Guidebook","ArrManuals"],["CleanBot","Creds"],["Minibar","Creds"],
+  ["Enrique","LLC"],["RevDef","Airbnb"],["DefRev","RevDef"],
+];
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+const nodeMap = {};
+RAW_NODES.forEach(n => nodeMap[n.id] = n);
+
+const linkSet = new Set();
+const links = [];
+RAW_LINKS.forEach(([s,t]) => {
+  const key = [s,t].sort().join('→');
+  if (!linkSet.has(key) && nodeMap[s] && nodeMap[t] && s!==t) {
+    linkSet.add(key);
+    links.push({source:s, target:t});
+  }
+});
+
+// Degree counts
+const inDeg={}, outDeg={};
+RAW_NODES.forEach(n=>{inDeg[n.id]=0;outDeg[n.id]=0;});
+RAW_LINKS.forEach(([s,t])=>{ if(nodeMap[s]&&nodeMap[t]){outDeg[s]=(outDeg[s]||0)+1;inDeg[t]=(inDeg[t]||0)+1;}});
+const degree={};
+RAW_NODES.forEach(n=>{ degree[n.id]=(inDeg[n.id]||0)+(outDeg[n.id]||0); });
+
+document.getElementById('sn').textContent = RAW_NODES.length;
+document.getElementById('sl').textContent = links.length;
+document.getElementById('sv').textContent = RAW_NODES.length;
+
+// ─────────────────────────────────────────────
+//  FILTER CHIPS
+// ─────────────────────────────────────────────
+const groups = [...new Set(RAW_NODES.map(n=>n.group))].sort();
+const filterState = {};
+groups.forEach(g=>filterState[g]=true);
+
+const filterBar = document.getElementById('filters');
+groups.forEach(g=>{
+  const chip = document.createElement('div');
+  chip.className = 'filter-chip';
+  chip.dataset.group = g;
+  chip.innerHTML = `<div class="filter-dot" style="background:${COLORS[g]||'#aaa'}"></div>${GROUP_LABEL[g]||g}`;
+  chip.style.background = (COLORS[g]||'#aaa')+'18';
+  chip.style.borderColor = (COLORS[g]||'#aaa')+'44';
+  chip.style.color = COLORS[g]||'#aaa';
+  chip.addEventListener('click', ()=>{ filterState[g]=!filterState[g]; chip.classList.toggle('off',!filterState[g]); applyFilter(); });
+  filterBar.appendChild(chip);
+});
+
+// ─────────────────────────────────────────────
+//  D3 SETUP
+// ─────────────────────────────────────────────
+const svg = d3.select('#graph');
+const W = window.innerWidth, H = window.innerHeight - 88;
+svg.attr('width',W).attr('height',H);
+const g = svg.append('g');
+
+const defs = svg.append('defs');
+// Glow filter
+const glow = defs.append('filter').attr('id','glow');
+glow.append('feGaussianBlur').attr('stdDeviation','3.5').attr('result','blur');
+const fm = glow.append('feMerge');
+fm.append('feMergeNode').attr('in','blur');
+fm.append('feMergeNode').attr('in','SourceGraphic');
+
+// Arrow markers
+groups.forEach(grp=>{
+  const color = COLORS[grp]||'#aaa';
+  defs.append('marker')
+    .attr('id',`arrow-${grp}`)
+    .attr('viewBox','0 -4 8 8').attr('refX',14).attr('refY',0)
+    .attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+    .append('path').attr('d','M0,-4L8,0L0,4').attr('fill',color).attr('opacity',0.6);
+});
+
+// Zoom
+const zoom = d3.zoom().scaleExtent([0.1,5])
+  .on('zoom', e=>g.attr('transform',e.transform));
+svg.call(zoom);
+svg.call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.55));
+
+// Simulation
+const sim = d3.forceSimulation(RAW_NODES)
+  .force('link', d3.forceLink(links).id(d=>d.id).distance(d=>{
+    const sg=typeof d.source==='object'?d.source.group:d.source,
+          tg=typeof d.target==='object'?d.target.group:d.target;
+    if(sg==='moc'&&tg==='moc') return 130;
+    if(sg==='moc'||tg==='moc') return 95;
+    if(sg==='propiedad'||tg==='propiedad') return 60;
+    return 80;
+  }).strength(0.5))
+  .force('charge', d3.forceManyBody().strength(d=>{
+    if(d.group==='moc') return -700;
+    if(d.group==='propiedad') return -120;
+    return -280;
+  }))
+  .force('collide', d3.forceCollide().radius(d=>nodeR(d)+10))
+  .force('center', d3.forceCenter(0,0))
+  .force('x', d3.forceX(0).strength(0.03))
+  .force('y', d3.forceY(0).strength(0.03));
+
+function nodeR(d){
+  const base = d.group==='moc'?16 : d.group==='propiedad'?7 : 10;
+  return base + Math.sqrt((degree[d.id]||0))*2.2;
+}
+
+// ── Render ──
+let showLabels = true, showArrows = true;
+
+const linkSel = g.append('g').selectAll('line').data(links).join('line')
+  .attr('class','link')
+  .attr('stroke', d=>{
+    const sg = typeof d.source==='object'?d.source.group:'moc';
+    return COLORS[sg]||'#4466aa';
+  })
+  .attr('stroke-width', d=>{
+    const sg=typeof d.source==='object'?d.source.group:'',
+          tg=typeof d.target==='object'?d.target.group:'';
+    return (sg==='moc'||tg==='moc')?1.8:0.9;
+  })
+  .attr('marker-end', d=>{
+    const sg=typeof d.source==='object'?d.source.group:'moc';
+    return `url(#arrow-${sg})`;
+  });
+
+// MOC halo rings
+const haloSel = g.append('g').selectAll('circle').data(RAW_NODES.filter(d=>d.group==='moc')).join('circle')
+  .attr('r',d=>nodeR(d)+7).attr('fill','none')
+  .attr('stroke',d=>COLORS[d.group]).attr('stroke-opacity',0.18).attr('stroke-width',8)
+  .attr('filter','url(#glow)');
+
+const nodeSel = g.append('g').selectAll('g').data(RAW_NODES).join('g').attr('class','node')
+  .call(d3.drag()
+    .on('start',(e,d)=>{if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y;})
+    .on('drag',(e,d)=>{d.fx=e.x;d.fy=e.y;})
+    .on('end',(e,d)=>{if(!e.active)sim.alphaTarget(0);}))
+  .on('dblclick',(e,d)=>{d.fx=null;d.fy=null;sim.alpha(0.3).restart();});
+
+nodeSel.append('circle')
+  .attr('r',d=>nodeR(d))
+  .attr('fill',d=>COLORS[d.group]||'#aaa')
+  .attr('fill-opacity',d=>d.group==='propiedad'?0.6:0.82)
+  .attr('stroke',d=>COLORS[d.group]||'#aaa').attr('stroke-width',1.8)
+  .attr('filter',d=>d.group==='moc'?'url(#glow)':null);
+
+const labelSel = nodeSel.append('text')
+  .text(d=>d.label)
+  .attr('x',d=>nodeR(d)+5).attr('y',4)
+  .attr('font-size',d=>d.group==='moc'?12.5:d.group==='propiedad'?9:10.5)
+  .attr('font-weight',d=>d.group==='moc'?'700':'400')
+  .attr('fill',d=>d.group==='moc'?COLORS[d.group]:'#b8ccee')
+  .attr('opacity',d=>d.group==='propiedad'?0.7:0.88);
+
+// ── Tooltip ──
+const tt = document.getElementById('tooltip');
+nodeSel.on('mouseover',(e,d)=>{
+  document.getElementById('tt-n').textContent = d.label;
+  document.getElementById('tt-g').textContent = GROUP_LABEL[d.group]||d.group;
+  document.getElementById('tt-c').textContent = `↑${outDeg[d.id]||0} out  ↓${inDeg[d.id]||0} in  ·  ${degree[d.id]||0} total`;
+  tt.style.opacity='1';
+}).on('mousemove',e=>{
+  tt.style.left=(e.clientX+16)+'px'; tt.style.top=(e.clientY-12)+'px';
+}).on('mouseout',()=>tt.style.opacity='0');
+
+// ── Sidebar ──
+const sidebar = document.getElementById('sidebar');
+document.getElementById('sidebar-close').addEventListener('click',()=>sidebar.classList.remove('open'));
+
+nodeSel.on('click',(e,d)=>{
+  e.stopPropagation();
+  openSidebar(d);
+  highlightNode(d.id);
+});
+svg.on('click',()=>{ sidebar.classList.remove('open'); clearHighlight(); });
+
+function openSidebar(d){
+  sidebar.classList.add('open');
+  document.getElementById('sb-title').textContent = d.label;
+  document.getElementById('sb-title').style.color = COLORS[d.group]||'#c9d8f0';
+  document.getElementById('sb-group').textContent = GROUP_LABEL[d.group]||d.group;
+  document.getElementById('sb-degree').textContent = degree[d.id]||0;
+  document.getElementById('sb-in').textContent = inDeg[d.id]||0;
+  document.getElementById('sb-out').textContent = outDeg[d.id]||0;
+  // neighbors
+  const neighbors = new Set();
+  links.forEach(l=>{
+    const s=typeof l.source==='object'?l.source.id:l.source;
+    const t=typeof l.target==='object'?l.target.id:l.target;
+    if(s===d.id) neighbors.add(t);
+    if(t===d.id) neighbors.add(s);
+  });
+  document.getElementById('sb-ncount').textContent = neighbors.size;
+  const nb = document.getElementById('sb-neighbors');
+  nb.innerHTML='';
+  [...neighbors].sort().forEach(nid=>{
+    const nn = nodeMap[nid];
+    if(!nn) return;
+    const tag = document.createElement('span');
+    tag.className='neighbor-tag';
+    tag.textContent=nn.label;
+    tag.style.borderColor=(COLORS[nn.group]||'#aaa')+'44';
+    tag.style.color=COLORS[nn.group]||'#aaa';
+    tag.addEventListener('click',e=>{e.stopPropagation();openSidebar(nn);highlightNode(nn.id);});
+    nb.appendChild(tag);
+  });
+}
+
+function highlightNode(id){
+  const conn = new Set([id]);
+  links.forEach(l=>{
+    const s=typeof l.source==='object'?l.source.id:l.source;
+    const t=typeof l.target==='object'?l.target.id:l.target;
+    if(s===id) conn.add(t);
+    if(t===id) conn.add(s);
+  });
+  nodeSel.style('opacity',d=>conn.has(d.id)?1:0.1);
+  linkSel.style('stroke-opacity',l=>{
+    const s=typeof l.source==='object'?l.source.id:l.source;
+    const t=typeof l.target==='object'?l.target.id:l.target;
+    return (s===id||t===id)?0.8:0.03;
+  });
+  haloSel.style('opacity',d=>conn.has(d.id)?1:0.05);
+}
+function clearHighlight(){
+  nodeSel.style('opacity',d=>filterState[d.group]?1:0);
+  linkSel.style('stroke-opacity',0.3);
+  haloSel.style('opacity',1);
+}
+
+// ── Filter ──
+function applyFilter(){
+  const visible = RAW_NODES.filter(n=>filterState[n.group]);
+  document.getElementById('sv').textContent = visible.length;
+  nodeSel.style('opacity',d=>filterState[d.group]?1:0).style('pointer-events',d=>filterState[d.group]?'all':'none');
+  haloSel.style('opacity',d=>filterState[d.group]?1:0);
+  linkSel.style('opacity',l=>{
+    const sg=typeof l.source==='object'?l.source.group:'';
+    const tg=typeof l.target==='object'?l.target.group:'';
+    return (filterState[sg]&&filterState[tg])?1:0;
+  });
+}
+
+// ── Search ──
+document.getElementById('search').addEventListener('input',function(){
+  const q=this.value.toLowerCase().trim();
+  if(!q){clearHighlight();return;}
+  const matched=RAW_NODES.filter(n=>n.label.toLowerCase().includes(q)).map(n=>n.id);
+  nodeSel.style('opacity',d=>matched.includes(d.id)?1:0.08);
+  linkSel.style('stroke-opacity',l=>{
+    const s=typeof l.source==='object'?l.source.id:l.source;
+    const t=typeof l.target==='object'?l.target.id:l.target;
+    return matched.includes(s)&&matched.includes(t)?0.7:0.03;
+  });
+});
+
+// ── Top nodes panel ──
+const topList = document.getElementById('top-nodes-list');
+const topNodes = [...RAW_NODES].sort((a,b)=>(degree[b.id]||0)-(degree[a.id]||0)).slice(0,10);
+topNodes.forEach(n=>{
+  const row = document.createElement('div');
+  row.className='top-node';
+  row.innerHTML=`<div class="tn-dot" style="background:${COLORS[n.group]}"></div><span class="tn-name">${n.label}</span><span class="tn-count">${degree[n.id]}</span>`;
+  row.addEventListener('click',()=>{openSidebar(n);highlightNode(n.id);});
+  topList.appendChild(row);
+});
+let spOpen=true;
+document.getElementById('sp-toggle').addEventListener('click',()=>{
+  spOpen=!spOpen;
+  topList.style.display=spOpen?'block':'none';
+  document.getElementById('sp-toggle').textContent=spOpen?'▾':'▸';
+});
+
+// ── Toolbar buttons ──
+document.getElementById('btn-labels').addEventListener('click',function(){
+  showLabels=!showLabels;
+  this.classList.toggle('active',showLabels);
+  labelSel.style('display',showLabels?null:'none');
+});
+document.getElementById('btn-arrows').addEventListener('click',function(){
+  showArrows=!showArrows;
+  this.classList.toggle('active',showArrows);
+  linkSel.attr('marker-end',d=>{
+    if(!showArrows) return null;
+    const sg=typeof d.source==='object'?d.source.group:'moc';
+    return `url(#arrow-${sg})`;
+  });
+});
+let simPaused=false;
+document.getElementById('btn-physics').addEventListener('click',function(){
+  simPaused=!simPaused;
+  this.textContent=simPaused?'Reanudar':'Pausar';
+  if(simPaused) sim.stop(); else sim.alpha(0.3).restart();
+});
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.translate(W/2,H/2).scale(0.55));
+});
+
+// ── Tick ──
+sim.on('tick',()=>{
+  linkSel.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+         .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+  nodeSel.attr('transform',d=>`translate(${d.x},${d.y})`);
+  haloSel.attr('cx',d=>d.x).attr('cy',d=>d.y);
+});
+
+window.addEventListener('resize',()=>{
+  const nW=window.innerWidth,nH=window.innerHeight-88;
+  svg.attr('width',nW).attr('height',nH);
+});
+</script>
+</body>
+</html>
